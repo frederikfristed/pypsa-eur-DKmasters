@@ -89,7 +89,7 @@ co2_budget:
   2045: 0.032
   2050: 0.000
 
-# set to true in case CO2 atmosphere is local (i.e. each node has a separated (local) CO2 atmosphere from remaining nodes) or false in case CO2 atmosphere is not local (i.e. all nodes share the same (global) CO2 atmosphere)
+# set to true in case CO2 atmosphere is local (i.e. each node has a separated (local) CO2 atmosphere from remaining nodes) or to false in case CO2 atmosphere is not local (i.e. all nodes share the same (global) CO2 atmosphere)
 co2_local_atmosphere: false
 
 # CO2 budget as a fraction of 1990 emissions per country
