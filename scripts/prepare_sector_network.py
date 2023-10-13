@@ -573,28 +573,13 @@ def add_co2_tracking(n, options):
     if snakemake.config["co2_local_atmosphere"]:
       logger.info("Configure model with %d 'CO2 atmosphere' stores attached to the %d local/nodal 'CO2 atmosphere' buses" % (len(spatial.co2.atmospheres), len(spatial.co2.atmospheres)))
 
-      # read CSV file containing disparate industries/services CO2 emissions (in megatonnes)
-      co2_emissions = pd.read_csv(snakemake.input.co2_totals_name, index_col = 0)
-
-      # sum disparate industries/services CO2 emissions per country (in tonnes)
-      co2_emissions_per_country = co2_emissions.sum(axis = 1) * 1e6
-
-      # get CO2 budget per country (in percentage)
-      co2_budget_per_country = snakemake.config["co2_budget_per_country"]
-
       # loop through local/nodal CO2 atmospheres
       for atmosphere in spatial.co2.atmospheres:
-
-          # calculate maximum CO2 emissions value allowed per local/node
-          country = atmosphere[:2]
-          node = atmosphere[:5]
-          fraction = pop_layout.loc[node]["fraction"]   # the population layout fraction is used to determine the "weight" that a node has in its country - this can always be changed in case of being incorrect after all
-          e_nom = co2_emissions_per_country[country] * fraction * co2_budget_per_country[country]
 
           # add store to local/nodal CO2 atmosphere
           n.add("Store",
                 atmosphere,
-                e_nom = e_nom,
+                e_nom_extendable=True,
                 e_min_pu = -1,
                 carrier = "co2",
                 bus = atmosphere
@@ -687,6 +672,46 @@ def add_co2_tracking(n, options):
                efficiency = 1.0,
                p_nom_extendable = True
               )
+
+
+### OBS ###
+
+def export_co2_budget():
+
+    # Initialize an empty dictionary to store e_nom values
+    e_nom_dict = {}
+
+    # read CSV file containing disparate industries/services CO2 emissions (in megatonnes)
+    co2_emissions = pd.read_csv(snakemake.input.co2_totals_name, index_col = 0)
+
+    # sum disparate industries/services CO2 emissions per country (in tonnes)
+    co2_emissions_per_country = co2_emissions.sum(axis = 1) * 1e6
+
+    # get CO2 budget per country (in percentage)
+    co2_budget_per_country = snakemake.config["co2_budget_per_country"]
+
+    # loop through local/nodal CO2 atmospheres
+    for atmosphere in spatial.co2.atmospheres:
+
+        # calculate maximum CO2 emissions value allowed per local/node
+        country = atmosphere[:2]
+        node = atmosphere[:5]
+        fraction = pop_layout.loc[node]["fraction"]   # the population layout fraction is used to determine the "weight" that a node has in its country - this can always be changed in case of being incorrect after all
+        e_nom = co2_emissions_per_country[country] * fraction * co2_budget_per_country[country]
+        e_nom_dict[atmosphere] = e_nom
+
+    # Export to a CSV file at the specified path
+    e_nom_df = pd.DataFrame.from_dict(e_nom_dict, orient='index', columns=['e_nom'])
+    simpl = snakemake.wildcards.simpl
+    clusters = snakemake.wildcards.clusters
+    ll = snakemake.wildcards.ll
+    opts = snakemake.wildcards.opts
+    sector_opts = snakemake.wildcards.sector_opts
+    planning_horizons = snakemake.wildcards.planning_horizons
+    file_path = f'resources/co2_budget_{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.csv'
+    e_nom_df.to_csv(file_path)
+
+### OBS ###
 
 def add_co2_network(n, costs):
     logger.info("Adding CO2 network.")
@@ -1952,29 +1977,32 @@ def add_heat(n, costs):
         )
 
         ## Add heat pumps
+        #heat_pump_type = "air" if "urban" in name else "ground"
 
-        heat_pump_type = "air" if "urban" in name else "ground"
+        # Both ground heat pumps and air in urban as well as rural
+        heat_pump_types = ["ground","air"]
+        for heat_pump_type in heat_pump_types:
 
-        costs_name = f"{name_type} {heat_pump_type}-sourced heat pump"
-        efficiency = (
-            cop[heat_pump_type][nodes[name]]
-            if options["time_dep_hp_cop"]
-            else costs.at[costs_name, "efficiency"]
-        )
+            costs_name = f"{name_type} {heat_pump_type}-sourced heat pump"
+            efficiency = (
+                cop[heat_pump_type][nodes[name]]
+                if options["time_dep_hp_cop"]
+                else costs.at[costs_name, "efficiency"]
+            )
 
-        n.madd(
-            "Link",
-            nodes[name],
-            suffix=f" {name} {heat_pump_type} heat pump",
-            bus0=nodes[name],
-            bus1=nodes[name] + f" {name} heat",
-            carrier=f"{name} {heat_pump_type} heat pump",
-            efficiency=efficiency,
-            capital_cost=costs.at[costs_name, "efficiency"]
-            * costs.at[costs_name, "fixed"],
-            p_nom_extendable=True,
-            lifetime=costs.at[costs_name, "lifetime"],
-        )
+            n.madd(
+                "Link",
+                nodes[name],
+                suffix=f" {name} {heat_pump_type} heat pump",
+                bus0=nodes[name],
+                bus1=nodes[name] + f" {name} heat",
+                carrier=f"{name} {heat_pump_type} heat pump",
+                efficiency=efficiency,
+                capital_cost=costs.at[costs_name, "efficiency"]
+                * costs.at[costs_name, "fixed"],
+                p_nom_extendable=True,
+                lifetime=costs.at[costs_name, "lifetime"],
+            )
 
         if options["tes"]:
             n.add("Carrier", name + " water tanks")
@@ -3953,6 +3981,13 @@ if __name__ == "__main__":
     add_generation(n, costs)
 
     add_storage_and_grids(n, costs)
+
+    ### OBS ###
+
+    if snakemake.config["co2_local_atmosphere"]:
+        export_co2_budget()
+
+    ### OBS ###
 
     # TODO merge with opts cost adjustment below
     for o in opts:

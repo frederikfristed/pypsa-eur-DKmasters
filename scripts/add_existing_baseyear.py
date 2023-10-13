@@ -23,12 +23,137 @@ import numpy as np
 import pypsa
 import xarray as xr
 from _helpers import override_component_attrs, update_config_with_sector_opts
-from prepare_sector_network import cluster_heat_buses, define_spatial, prepare_costs
-
+from prepare_sector_network import cluster_heat_buses, prepare_costs
 cc = coco.CountryConverter()
 
 spatial = SimpleNamespace()
 
+def define_spatial(nodes, options):
+    """
+    Namespace for spatial.
+
+    Parameters
+    ----------
+    nodes : list-like
+    """
+
+    global spatial
+
+    spatial.nodes = nodes
+
+    # biomass
+
+    spatial.biomass = SimpleNamespace()
+
+    if options.get("biomass_spatial", options["biomass_transport"]):
+        spatial.biomass.nodes = nodes + " solid biomass"
+        spatial.biomass.locations = nodes
+        spatial.biomass.industry = nodes + " solid biomass for industry"
+        spatial.biomass.industry_cc = nodes + " solid biomass for industry CC"
+    else:
+        spatial.biomass.nodes = ["EU solid biomass"]
+        spatial.biomass.locations = ["EU"]
+        spatial.biomass.industry = ["solid biomass for industry"]
+        spatial.biomass.industry_cc = ["solid biomass for industry CC"]
+
+    spatial.biomass.df = pd.DataFrame(vars(spatial.biomass), index=nodes)
+
+    # co2
+
+    spatial.co2 = SimpleNamespace()
+
+    # define a local/nodal or global CO2 atmosphere depending on value of Snakemake option "co2_local_atmosphere"
+    if snakemake.config["co2_local_atmosphere"]:
+        spatial.co2.atmospheres = nodes + " co2 atmosphere"
+    else:
+        spatial.co2.atmospheres = ["co2 atmosphere"]
+
+    if options["co2_spatial"]:
+        spatial.co2.nodes = nodes + " co2 stored"
+        spatial.co2.locations = nodes
+        spatial.co2.vents = nodes + " co2 vent"
+        spatial.co2.process_emissions = nodes + " process emissions"
+    else:
+        spatial.co2.nodes = ["co2 stored"]
+        spatial.co2.locations = ["EU"]
+        spatial.co2.vents = ["co2 vent"]
+        spatial.co2.process_emissions = ["process emissions"]
+
+    spatial.co2.df = pd.DataFrame(vars(spatial.co2), index=nodes)
+
+    # gas
+
+    spatial.gas = SimpleNamespace()
+
+    if options["gas_network"]:
+        spatial.gas.nodes = nodes + " gas"
+        spatial.gas.locations = nodes
+        spatial.gas.biogas = nodes + " biogas"
+        spatial.gas.industry = nodes + " gas for industry"
+        spatial.gas.industry_cc = nodes + " gas for industry CC"
+        spatial.gas.biogas_to_gas = nodes + " biogas to gas"
+    else:
+        spatial.gas.nodes = ["EU gas"]
+        spatial.gas.locations = ["EU"]
+        spatial.gas.biogas = ["EU biogas"]
+        spatial.gas.industry = ["gas for industry"]
+        spatial.gas.biogas_to_gas = ["EU biogas to gas"]
+        if options.get("co2_spatial", options["co2network"]):
+            spatial.gas.industry_cc = nodes + " gas for industry CC"
+        else:
+            spatial.gas.industry_cc = ["gas for industry CC"]
+
+    spatial.gas.df = pd.DataFrame(vars(spatial.gas), index=nodes)
+
+    # ammonia
+
+    if options.get("ammonia"):
+        spatial.ammonia = SimpleNamespace()
+        if options.get("ammonia") == "regional":
+            spatial.ammonia.nodes = nodes + " NH3"
+            spatial.ammonia.locations = nodes
+        else:
+            spatial.ammonia.nodes = ["EU NH3"]
+            spatial.ammonia.locations = ["EU"]
+
+        spatial.ammonia.df = pd.DataFrame(vars(spatial.ammonia), index=nodes)
+
+    # hydrogen
+    spatial.h2 = SimpleNamespace()
+    spatial.h2.nodes = nodes + " H2"
+    spatial.h2.locations = nodes
+
+    # methanol
+    spatial.methanol = SimpleNamespace()
+
+    if snakemake.config["co2_local_atmosphere"]:
+        spatial.methanol.nodes = nodes + " methanol"
+        spatial.methanol.locations = nodes
+    else:
+        spatial.methanol.nodes = ["EU methanol"]
+        spatial.methanol.locations = ["EU"]
+
+    # oil
+    spatial.oil = SimpleNamespace()
+    spatial.oil.nodes = ["EU oil"]
+    spatial.oil.locations = ["EU"]
+
+    # uranium
+    spatial.uranium = SimpleNamespace()
+    spatial.uranium.nodes = ["EU uranium"]
+    spatial.uranium.locations = ["EU"]
+
+    # coal
+    spatial.coal = SimpleNamespace()
+    spatial.coal.nodes = ["EU coal"]
+    spatial.coal.locations = ["EU"]
+
+    # lignite
+    spatial.lignite = SimpleNamespace()
+    spatial.lignite.nodes = ["EU lignite"]
+    spatial.lignite.locations = ["EU"]
+
+    return spatial
 
 def add_build_year_to_new_assets(n, baseyear):
     """
@@ -427,6 +552,11 @@ def add_heating_capacities_installed_before_baseyear(
     # distribute technologies to nodes by population
     pop_layout = pd.read_csv(snakemake.input.clustered_pop_layout, index_col=0)
 
+    # pop_layout.loc[pop_layout.index.str.contains('DK1 6'),'rural'] = 0.1
+
+    print(pop_layout.loc[pop_layout.index.str.contains('DK1 6'),'rural'])
+    print(pop_layout.loc[pop_layout.index.str.contains('DK1 5'),'rural'])
+    
     nodal_df = df.loc[pop_layout.ct]
     nodal_df.index = pop_layout.index
     nodal_df = nodal_df.multiply(pop_layout.fraction, axis=0)
@@ -436,10 +566,10 @@ def add_heating_capacities_installed_before_baseyear(
     ratio_residential = pd.Series(
         [
             (
-                n.loads_t.p_set.sum()[f"{node} residential rural heat"]
+                n.loads_t.p_set.sum().loc[f"{node} residential rural heat"]
                 / (
-                    n.loads_t.p_set.sum()[f"{node} residential rural heat"]
-                    + n.loads_t.p_set.sum()[f"{node} services rural heat"]
+                    n.loads_t.p_set.sum().loc[f"{node} residential rural heat"]
+                    + n.loads_t.p_set.sum().loc[f"{node} services rural heat"]
                 )
             )
             for node in nodal_df.index

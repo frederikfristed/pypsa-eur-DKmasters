@@ -10,12 +10,12 @@ logging:
   format: '%(levelname)s:%(name)s:%(message)s'
 
 run:
-  name: "" # use this to keep track of runs with different settings
+  name: "run_name" # use this to keep track of runs with different settings
   disable_progressbar: false # set to true to disable the progressbar
-  shared_resources: false # set to true to share the default resources across runs
+  shared_resources: true # set to true to share the default resources across runs
   shared_cutouts: true # set to true to share the default cutout(s) across runs
 
-foresight: overnight # options are overnight, myopic, perfect (perfect is not yet implemented)
+foresight: myopic # options are overnight, myopic, perfect (perfect is not yet implemented)
 # if you use myopic or perfect foresight, set the investment years in "planning_horizons" below
 
 scenario:
@@ -23,17 +23,12 @@ scenario:
   - ''
   ll:  # allowed transmission line volume expansion, can be any float >= 1.0 with a prefix v|c (today) or "copt"
   - v1.0
-  - v1.5
   clusters:  # number of nodes in Europe, any integer between 37 (1 node per country-zone) and several hundred
-  - 37
-  - 128
-  - 256
-  - 512
-  - 1024
+  - 44
   opts: # only relevant for PyPSA-Eur
   - ''
   sector_opts: # this is where the main scenario settings are
-  - Co2L0-3H-T-H-B-I-A-solar+p3-dist1
+  - Co2L0.45-168H-T-H-B-I-A-solar+p3-dist1
   # to really understand the options here, look in scripts/prepare_sector_network.py
   # Co2Lx specifies the CO2 target in x% of the 1990 values; default will give default (5%);
   # Co2L0p25 will give 25% CO2 emissions; Co2Lm0p05 will give 5% negative emissions
@@ -51,13 +46,48 @@ scenario:
   # cb40ex0 distributes a carbon budget of 40 GtCO2 following an exponential
   # decay with initial growth rate 0
   planning_horizons: # investment years for myopic and perfect; for overnight, year of cost assumptions can be different and is defined under 'costs'
-  - 2050
+  - 2030
   # for example, set to
   # - 2020
   # - 2030
   # - 2040
   # - 2050
   # for myopic foresight
+
+
+focus_weights:
+ 'AL': 0.023
+ 'AT': 0.023
+ 'BA': 0.023
+ 'BE': 0.023
+ 'BG': 0.023
+ 'CH': 0.023
+ 'CZ': 0.023
+ 'DE': 0.023
+ 'EE': 0.023  
+ 'ES': 0.046
+ 'FI': 0.023
+ 'FR': 0.023
+ 'GB': 0.046
+ 'GR': 0.023
+ 'HR': 0.023
+ 'HU': 0.023
+ 'IE': 0.023
+ 'IT': 0.046
+ 'LT': 0.023
+ 'LU': 0.023
+ 'LV': 0.023
+ 'ME': 0.023
+ 'MK': 0.023 
+ 'NL': 0.023
+ 'NO': 0.023
+ 'PL': 0.023
+ 'PT': 0.023
+ 'RO': 0.023
+ 'RS': 0.023
+ 'SE': 0.023
+ 'SI': 0.023
+ 'SK': 0.023
 
 countries: ['AL', 'AT', 'BA', 'BE', 'BG', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IT', 'LT', 'LU', 'LV', 'ME', 'MK', 'NL', 'NO', 'PL', 'PT', 'RO', 'RS', 'SE', 'SI', 'SK']
 
@@ -75,7 +105,7 @@ enable:
   retrieve_cutout: true
   build_natura_raster: false
   retrieve_natura_raster: true
-  custom_busmap: false
+  custom_busmap: true
 
 # CO2 budget as a fraction of 1990 emissions
 # this is over-ridden if CO2Lx is set in sector_opts
@@ -89,44 +119,44 @@ co2_budget:
   2045: 0.032
   2050: 0.000
 
-# set to true in case CO2 atmosphere is local (i.e. each node has a separated (local) CO2 atmosphere from remaining nodes) or to false in case CO2 atmosphere is not local (i.e. all nodes share the same (global) CO2 atmosphere)
-co2_local_atmosphere: false
+# set to true in case CO2 atmosphere is local (i.e. each node has a separated (local) CO2 atmosphere from remaining nodes) or false in case CO2 atmosphere is not local (i.e. all nodes share the same (global) CO2 atmosphere)
+co2_local_atmosphere: true
 
 # CO2 budget as a fraction of 1990 emissions per country
 co2_budget_per_country:
-  'AL': 0.0
-  'AT': 0.0
-  'BA': 0.0
-  'BE': 0.0
-  'BG': 0.0
-  'CH': 0.0
-  'CZ': 0.0
-  'DE': 0.0
-  'DK': 0.0
-  'EE': 0.0
-  'ES': 0.0
-  'FI': 0.0
-  'FR': 0.0
-  'GB': 0.0
-  'GR': 0.0
-  'HR': 0.0
-  'HU': 0.0
-  'IE': 0.0
-  'IT': 0.0
-  'LT': 0.0
-  'LU': 0.0
-  'LV': 0.0
-  'ME': 0.0
-  'MK': 0.0
-  'NL': 0.0
-  'NO': 0.0
-  'PL': 0.0
-  'PT': 0.0
-  'RO': 0.0
-  'RS': 0.0
-  'SE': 0.0
-  'SI': 0.0
-  'SK': 0.0
+  'AL': 0.84
+  'AT': 0.82
+  'BA': 0.63
+  'BE': 0.68
+  'BG': 0.59 
+  'CH': 0.50
+  'CZ': 0.52
+  'DE': 0.35
+  'DK': 0.22
+  'EE': 0.30
+  'ES': 0.68
+  'FI': 0.40
+  'FR': 0.45
+  'GB': 0.32
+  'GR': 0.45
+  'HR': 0.55
+  'HU': 0.60
+  'IE': 0.49
+  'IT': 0.40
+  'LT': 0.60
+  'LU': 0.45
+  'LV': 0.62
+  'ME': 0.65
+  'MK': 0.18
+  'NL': 0.40
+  'NO': 0.45
+  'PL': 0.61
+  'PT': 0.70
+  'RO': 0.60
+  'RS': 0.67
+  'SE': 0.37
+  'SI': 0.60
+  'SK': 0.45
 
 electricity:
   voltages: [220., 300., 380.]
@@ -310,7 +340,7 @@ links:
   p_max_pu: 1.0
   p_nom_max: .inf
   include_tyndp: true
-  under_construction: 'zero' # 'zero': set capacity to zero, 'remove': remove, 'keep': with full capacity
+  under_construction: 'keep' # 'zero': set capacity to zero, 'remove': remove, 'keep': with full capacity
 
 transformers:
   x: 0.1
@@ -348,11 +378,11 @@ energy:
   energy_totals_year: 2011
   base_emissions_year: 1990
   eurostat_report_year: 2016
-  emissions: CO2 # "CO2" or "All greenhouse gases - (CO2 equivalent)"
+  emissions: All greenhouse gases - (CO2 equivalent) # "CO2" or "All greenhouse gases - (CO2 equivalent)"
 
 biomass:
   year: 2030
-  scenario: ENS_Med
+  scenario: ENS_Med # VAR
   classes:
     solid biomass:
     - Agricultural waste
@@ -361,16 +391,16 @@ biomass:
     - Sawdust
     - Residues from landscape care
     - Municipal waste
+    - Willow # VAR
+    - Poplar # VAR
+    - FuelwoodRW # VAR
+    - C&P_RW # VAR
     not included:
     - Sugar from sugar beet
     - Rape seed
     - "Sunflower, soya seed "
     - Bioethanol barley, wheat, grain maize, oats, other cereals and rye
     - Miscanthus, switchgrass, RCG
-    - Willow
-    - Poplar
-    - FuelwoodRW
-    - C&P_RW
     biogas:
     - Manure solid, liquid
     - Sludge
@@ -395,18 +425,18 @@ existing_capacities:
 
 
 sector:
-  district_heating:
-    potential: 0.6  # maximum fraction of urban demand which can be supplied by district heating
+  district_heating: # OBS Investigate
+    potential: 0.68  # maximum fraction of urban demand which can be supplied by district heating
      # increase of today's district heating demand to potential maximum district heating share
      # progress = 0 means today's district heating share, progress = 1 means maximum fraction of urban demand is supplied by district heating
     progress:
-      2020: 0.0
-      2030: 0.3
-      2040: 0.6
-      2050: 1.0
+      # 2020: 0.0
+      2030: 1.0
+      # 2040: 0.6
+      # 2050: 1.0
     district_heating_loss: 0.15
   cluster_heat_buses: false # cluster residential and service heat buses to one to save memory
-  bev_dsm_restriction_value: 0.75  #Set to 0 for no restriction on BEV DSM
+  bev_dsm_restriction_value: 0.75 #Set to 0 for no restriction on BEV DSM
   bev_dsm_restriction_time: 7  #Time at which SOC of BEV has to be dsm_restriction_value
   transport_heating_deadband_upper: 20.
   transport_heating_deadband_lower: 15.
@@ -422,21 +452,21 @@ sector:
   bev_charge_rate: 0.011 #3-phase charger with 11 kW
   bev_avail_max: 0.95
   bev_avail_mean: 0.8
-  v2g: true #allows feed-in to grid from EV battery
+  v2g: false #allows feed-in to grid from EV battery
   #what is not EV or FCEV is oil-fuelled ICE
   land_transport_fuel_cell_share:
     2020: 0
-    2030: 0.05
+    2030: 0
     2040: 0.1
     2050: 0.15
   land_transport_electric_share:
     2020: 0
-    2030: 0.25
+    2030: 0.11
     2040: 0.6
     2050: 0.85
   land_transport_ice_share:
     2020: 1
-    2030: 0.7
+    2030: 0.89
     2040: 0.3
     2050: 0
   transport_fuel_cell_efficiency: 0.5
@@ -531,7 +561,7 @@ sector:
   min_part_load_methanolisation: 0.5 # p_min_pu
   use_fischer_tropsch_waste_heat: true
   use_fuel_cell_waste_heat: true
-  use_electrolysis_waste_heat: false
+  use_electrolysis_waste_heat: true
   electricity_distribution_grid: true
   electricity_distribution_grid_cost_factor: 1.0  #multiplies cost in data/costs.csv
   electricity_grid_connection: true  # only applies to onshore wind and utility PV
@@ -545,11 +575,11 @@ sector:
   gas_network_connectivity_upgrade: 1 # https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.connectivity.edge_augmentation.k_edge_augmentation.html#networkx.algorithms.connectivity.edge_augmentation.k_edge_augmentation
   gas_distribution_grid: true
   gas_distribution_grid_cost_factor: 1.0  #multiplies cost in data/costs.csv
-  biomass_spatial: false  # regionally resolve biomass (e.g. potentials)
+  biomass_spatial: true  # regionally resolve biomass (e.g. potentials)
   biomass_transport: false  # allow transport of solid biomass between nodes
   conventional_generation: # generator : carrier
     OCGT: gas
-  biomass_to_liquid: false
+  biomass_to_liquid: true
   biosng: false
 
 industry:
@@ -663,7 +693,7 @@ solving:
     formulation: kirchhoff
     clip_p_max_pu: 1.e-2
     load_shedding: false
-    noisy_costs: true
+    noisy_costs: false
     skip_iterations: true
     track_iterations: false
     min_iterations: 4

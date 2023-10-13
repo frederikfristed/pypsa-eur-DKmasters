@@ -41,6 +41,9 @@ if __name__ == "__main__":
 
     pop = pd.DataFrame(pop, index=clustered_regions.index)
 
+    # Correct potential 0-values in 'rural' as this cause an error in add_existing_baseyear
+    pop.loc[pop['rural']==0,'rural'] = 0.01
+
     pop["ct"] = pop.index.str[:2]
     country_population = pop.total.groupby(pop.ct).sum()
     pop["fraction"] = pop.total / pop.ct.map(country_population)

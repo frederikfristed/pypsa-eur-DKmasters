@@ -27,6 +27,7 @@ Additionally, some extra constraints specified in :mod:`solve_network` are added
     the workflow for all scenarios in the configuration file (``scenario:``)
     based on the rule :mod:`solve_network`.
 """
+import os
 import logging
 import re
 
@@ -551,6 +552,203 @@ def add_pipe_retrofit_constraint(n):
 
     n.model.add_constraints(lhs == rhs, name="Link-pipe_retrofit")
 
+### ADDED NEW FUNCTION HERE ###
+
+def ev_share_const(const_country, land_transport_electric_share):
+    #const_country: Country ISO code, e.g. 'DK'
+    #land_transport_electric_share: Share of EV land transport in constrained country
+
+    global_land_transport_electric_share = n.config["sector"]["land_transport_electric_share"][2030]    #NB 2030 is hardcoded
+    k_fac = land_transport_electric_share/global_land_transport_electric_share
+
+    #BEV charger constraint
+        #Extract BEV charger links for DK nodes
+    link_list = n.links.bus0.to_list()
+    mask_bus_BEV_charger = pd.Series([bus.startswith(const_country) for bus in link_list])
+    mask_carrier_BEV_charger = n.links.carrier=='BEV charger'
+    mask_carrier_BEV_charger.index = mask_bus_BEV_charger.index
+    mask_DK_BEV_charger = mask_bus_BEV_charger & mask_carrier_BEV_charger
+    mask_DK_BEV_charger.index = n.links.index
+
+        #Scale link capacity
+    n.links.loc[mask_DK_BEV_charger,'p_nom'] *= k_fac
+
+    #BEV battery capacity constraint
+        #Extract BEV battery stores for DK nodes
+    store_list = n.stores.bus.to_list()
+    mask_bus_BEV_battery = pd.Series([bus.startswith(const_country) for bus in store_list])
+    mask_carrier_BEV_battery = n.stores.carrier=='battery storage'
+    mask_carrier_BEV_battery.index = mask_bus_BEV_battery.index
+    mask_DK_BEV_battery = mask_bus_BEV_battery & mask_carrier_BEV_battery
+    mask_DK_BEV_battery.index = n.stores.index
+
+        #Scale store capacity
+    n.stores.loc[mask_DK_BEV_battery,'e_nom'] *= k_fac
+
+    #ICE constraint
+        #Transport load
+    clusters = snakemake.wildcards.clusters
+    simpl = snakemake.wildcards.simpl
+    simpl_part = f"s{simpl}_" if simpl else "s_"
+    file_path = f"resources/transport_demand_{simpl_part}{clusters}.csv"
+    transport = pd.read_csv(file_path, index_col=0, parse_dates=True)
+
+        #Ice scale factor
+    global_land_transport_ICE_share = 1 - global_land_transport_electric_share
+    land_transport_ICE_share = 1 - land_transport_electric_share
+    ICE_fac = land_transport_ICE_share/global_land_transport_ICE_share
+
+    if snakemake.config["co2_local_atmosphere"]:
+
+        #Extract oil emission loads specific to target country nodes
+        load_list = n.loads.index.to_list()
+        mask_loads_country = pd.Series([load.startswith(const_country) for load in load_list])
+        mask_loads_country.index = n.loads.index
+        mask_loads_carrier = n.loads.carrier=='land transport oil emissions'
+        mask_loads_carrier.index = n.loads.index
+        mask_loads = mask_loads_country & mask_loads_carrier
+        
+        #Scale oil emission capacity
+        n.loads.loc[mask_loads,'p_set'] *= ICE_fac
+
+    else:
+
+        #Extract nodes and country specific nodes
+        bus_list = n.buses.index.to_list()
+        mask_nodes = n.buses.country.apply(lambda x: x!='')
+        mask_country = pd.Series([bus.startswith(const_country) for bus in bus_list])
+        mask_country.index = mask_nodes.index
+        mask_nodes_country = mask_nodes & mask_country
+        nodes = n.buses.loc[mask_nodes].index
+        nodes_country = n.buses.loc[mask_nodes_country].index
+        
+        #Extract transport loads in network and in target country
+        transport_country = transport[nodes_country].sum().sum()
+        transport_global = transport[nodes].sum().sum()
+        country_share = transport_country/transport_global
+        
+        #Scale oil emission capacity
+        CO2_global = n.loads.loc['land transport oil emissions'].p_set
+        n.loads.loc['land transport oil emissions','p_set'] = CO2_global - CO2_global*country_share + CO2_global*country_share*ICE_fac
+
+def remove_myopic_RE_cap():
+    # Load generators
+    gen = n.generators
+
+    # Carriers to remove
+    mask_carrier = gen.index.str.contains('onwind|solar|offwind-ac|offwind-dc', case=False, regex=True)
+
+    # Remove only non-extendable
+    mask_ext = gen['p_nom_extendable'] == False
+
+    # Generators to be removed
+    gen_RE_myopic = gen[mask_carrier & mask_ext].index
+
+    # Remove selected generators
+    n.generators.drop(gen_RE_myopic,inplace = True)
+          
+def country_generator_const(const_country, const_carrier, gen_limit, type):
+
+    #const_country: Country ISO code of constrained contries in square brackets, e.g. ['DK']
+    #const_carrier: Constrained carriers in squared brackets, e.g. ['offwind-ac','offwind-dc']
+    #gen_limit: Country-wide generator limit in MW, e.g. 5000
+    #type: Constraint type: 'E'=equality, 'LE'=less or equal, 'GE'=greater or equal
+
+    #Load generators
+    gen = n.generators
+    mask_ext = gen['p_nom_extendable'] == True
+
+    #Extract constrained generators by 2-character prefix and carrier name
+    gen_ext = gen[mask_ext] 
+    gen_series = gen_ext.index.to_list()
+    gen_series_scrub = pd.DataFrame([s[:2] for s in gen_series])
+    gen_series_scrub.index = gen_ext.carrier.index
+    grouper = pd.concat([gen_ext.carrier,gen_series_scrub],axis=1)
+    const_idx = grouper[(grouper.iloc[:, 0].isin(const_carrier)) & (grouper.iloc[:, 1].isin(const_country))].index
+    const_gen = gen_ext.loc[const_idx].index.to_list()
+
+    # Brownfield installed generators
+    gen_brown = gen[~mask_ext]
+    mask_country = gen_brown['bus'].str.contains('|'.join(const_country), case=False, na=False)
+    mask_carrier = gen_brown['carrier'].isin(const_carrier)
+    intalled_gen = gen_brown.loc[mask_country & mask_carrier,'p_nom'].sum()
+
+    #Nominal capacity in model object
+    gen_p = n.model["Generator-p_nom"]
+
+    #Apply constraint
+    name_str = "_".join(const_country + const_carrier + ["const"])
+
+    gen_limit_brown = gen_limit - intalled_gen
+
+    if type == 'E':
+        n.model.add_constraints(gen_p.loc[const_gen].sum()==gen_limit_brown,name=name_str)
+    elif type == 'LE':
+        n.model.add_constraints(gen_p.loc[const_gen].sum()<=gen_limit_brown,name=name_str)
+    elif type == 'GE':
+        n.model.add_constraints(gen_p.loc[const_gen].sum()>=gen_limit_brown,name=name_str)
+
+def country_p2h_const(const_country, link_limit):
+    #const_country: Country ISO code/codes as string, e.g. 'DK'
+    #link_limit: Country-wide P2H limit [MW], e.g. 5000
+
+    const_country = 'DK'
+    
+    #Extract P2H links in constrained country
+    links = n.links
+    mask_ext = links['p_nom_extendable'] == True
+    links_ext = links[mask_ext]
+    
+    mask_p2h = links_ext.index.str.contains('heat pump|resistive heater', case=False, regex=True)
+    mask_country = links_ext['bus0'].str.contains(const_country, case=False, regex=True)
+    mask_comb = mask_p2h & mask_country
+    links_p2h = links_ext.loc[mask_comb].index.to_list()
+    
+    # Brownfield installed generators
+    links_brown = links[~mask_ext]
+    mask_p2h = links_brown.index.str.contains('heat pump|resistive heater', case=False, regex=True)
+    mask_country = links_brown['bus0'].str.contains(const_country, case=False, regex=True)
+    intalled_links = links_brown.loc[mask_country & mask_p2h,'p_nom'].sum()
+    
+    #Nominal capacity in model object
+    link_p = n.model["Link-p_nom"]
+    
+    link_limit_brown = link_limit - intalled_links
+    
+    #Add constraint
+    name_str = const_country + "_P2H_const"
+    n.model.add_constraints(link_p.loc[links_p2h].sum()<=link_limit_brown, name=name_str)
+
+def country_p2x_const(const_country, link_limit, type):
+    #const_country: Country ISO code, e.g. 'DK'
+    #link_limit: Country-wide H2 electrolysis limit [MW], e.g. 5000
+    #type: Constraint type: 'E'=equality, 'LE'=less or equal, 'GE'=greater or equal
+
+    #Load links
+    links = n.links
+    const_carrier = "H2 Electrolysis"
+
+    #Extract P2X links in constrained country
+    mask_p2x = links.index.str.contains('H2 Electrolysis', case=False, regex=True)
+    mask_country = links['bus0'].str.contains(const_country, case=False, regex=True)
+    mask_comb = mask_p2x & mask_country
+    links_p2x = links.loc[mask_comb].index.to_list()
+    
+    #Nominal capacity in model object
+    link_p = n.model["Link-p_nom"]
+    
+    #Add constraint
+    name_str = const_country + "_P2X_const"
+
+    if type == 'E':
+        n.model.add_constraints(link_p.loc[links_p2x].sum()==link_limit, name=name_str)
+    elif type == 'LE':
+        n.model.add_constraints(link_p.loc[links_p2x].sum()<=link_limit,name=name_str)
+    elif type == 'GE':
+        n.model.add_constraints(link_p.loc[links_p2x].sum()>=link_limit, name=name_str)
+
+
+### END OF ADDED NEW FUNCTION ###
 
 def extra_functionality(n, snapshots):
     """
@@ -578,6 +776,52 @@ def extra_functionality(n, snapshots):
     add_battery_constraints(n)
     add_pipe_retrofit_constraint(n)
 
+    ### ADDED NEW CODE HERE ###
+
+#Add scenario constraints
+    remove_myopic_RE_cap() # It is important that this comes before country_generator_const if active!
+
+    ev_share_const('DK', 0.21)
+
+    country_generator_const(['DK'], ['onwind'], 6075, 'LE')
+
+    country_generator_const(['DK'], ['offwind','offwind-ac','offwind-dc'], 8985, 'LE')
+
+    country_generator_const(['DK'], ['solar','solar rooftop'], 13011, 'LE')
+
+    # country_p2h_const('DK', 2775)
+
+    # country_p2x_const('DK', 4000, 'E')
+
+#Add local co2 constraints
+
+    #Wildcards
+    simpl = snakemake.wildcards.simpl
+    clusters = snakemake.wildcards.clusters
+    ll = snakemake.wildcards.ll
+    opts = snakemake.wildcards.opts
+    sector_opts = snakemake.wildcards.sector_opts
+    planning_horizons = snakemake.wildcards.planning_horizons
+
+    file_path = f'resources/co2_budget_{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.csv'
+    df_co2 = pd.read_csv(file_path)
+    df_co2.columns = ['co2 atmosphere', 'co2 budget']
+
+    #Store nominal capacity in model object
+    store_e = n.model["Store-e_nom"]
+
+    #Apply local CO2 constraints nodally
+    co2_budget = df_co2['co2 budget']
+    co2_budget.index = df_co2['co2 atmosphere']
+
+    logger.info(f"Adding local CO2 constraint for each node")
+
+    for atmosphere in df_co2.loc[:,'co2 atmosphere']:
+        co2_cap = co2_budget[atmosphere]
+        name_str = atmosphere + " local co2 constraint"
+        n.model.add_constraints(store_e[atmosphere] <= co2_cap, name=name_str)
+
+    ### END OF ADDED CODE ###
 
 def solve_network(n, config, opts="", **kwargs):
     set_of_options = config["solving"]["solver"]["options"]
@@ -599,9 +843,18 @@ def solve_network(n, config, opts="", **kwargs):
         skip_iterations = True
         logger.info("No expandable lines found. Skipping iterative solving.")
 
+    from pathlib import Path
+    import os
+
+    tmpdir = '/scratch/' + os.environ['SLURM_JOB_ID']
+
+    # if tmpdir is not None:
+    #     Path(tmpdir).mkdir(parents=True, exist_ok=True)
+
     if skip_iterations:
         status, condition = n.optimize(
             solver_name=solver_name,
+            model_kwargs = {"solver_dir": tmpdir},
             extra_functionality=extra_functionality,
             **solver_options,
             **kwargs,
@@ -609,6 +862,7 @@ def solve_network(n, config, opts="", **kwargs):
     else:
         status, condition = n.optimize.optimize_transmission_expansion_iteratively(
             solver_name=solver_name,
+            model_kwargs = {"solver_dir": tmpdir},
             track_iterations=track_iterations,
             min_iterations=min_iterations,
             max_iterations=max_iterations,
@@ -674,4 +928,23 @@ if __name__ == "__main__":
         n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
         n.export_to_netcdf(snakemake.output[0])
 
+        ### OBS ###
+
+        #Export linopy model
+    
+        simpl = snakemake.wildcards.simpl
+        clusters = snakemake.wildcards.clusters
+        ll = snakemake.wildcards.ll
+        opts = snakemake.wildcards.opts
+        sector_opts = snakemake.wildcards.sector_opts
+        planning_horizons = snakemake.wildcards.planning_horizons
+
+        os.makedirs(f'results/{n.config["run"]["name"]}/models', exist_ok=True)
+        file_path = f'results/{n.config["run"]["name"]}/models/model_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.nc'
+        n.model.to_netcdf(file_path)
+
+        ### OBS ###
+
+
     logger.info("Maximum memory usage: {}".format(mem.mem_usage))
+
