@@ -931,17 +931,17 @@ if __name__ == "__main__":
         ### OBS ###
 
         #Export linopy model
-    
-        simpl = snakemake.wildcards.simpl
-        clusters = snakemake.wildcards.clusters
-        ll = snakemake.wildcards.ll
-        opts = snakemake.wildcards.opts
-        sector_opts = snakemake.wildcards.sector_opts
-        planning_horizons = snakemake.wildcards.planning_horizons
+        if n.config["enable"]["save_model"]:
+            simpl = snakemake.wildcards.simpl
+            clusters = snakemake.wildcards.clusters
+            ll = snakemake.wildcards.ll
+            opts = snakemake.wildcards.opts
+            sector_opts = snakemake.wildcards.sector_opts
+            planning_horizons = snakemake.wildcards.planning_horizons
 
-        os.makedirs(f'results/{n.config["run"]["name"]}/models', exist_ok=True)
-        file_path = f'results/{n.config["run"]["name"]}/models/model_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.nc'
-        n.model.to_netcdf(file_path)
+            os.makedirs(f'results/{n.config["run"]["name"]}/models', exist_ok=True)
+            file_path = f'results/{n.config["run"]["name"]}/models/model_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.nc'
+            n.model.to_netcdf(file_path)
 
         ### OBS ###
 

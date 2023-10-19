@@ -106,6 +106,7 @@ enable:
   build_natura_raster: false
   retrieve_natura_raster: true
   custom_busmap: true
+  save_model: false
 
 # CO2 budget as a fraction of 1990 emissions
 # this is over-ridden if CO2Lx is set in sector_opts
@@ -124,11 +125,11 @@ co2_local_atmosphere: true
 
 # CO2 budget as a fraction of 1990 emissions per country
 co2_budget_per_country:
-  'AL': 0.84
+  'AL': 0.60
   'AT': 0.82
   'BA': 0.63
   'BE': 0.68
-  'BG': 0.59 
+  'BG': 0.59
   'CH': 0.50
   'CZ': 0.52
   'DE': 0.35
@@ -334,7 +335,7 @@ lines:
   s_max_pu: 0.7
   s_nom_max: .inf
   length_factor: 1.25
-  under_construction: 'zero' # 'zero': set capacity to zero, 'remove': remove, 'keep': with full capacity
+  under_construction: 'keep' # 'zero': set capacity to zero, 'remove': remove, 'keep': with full capacity
 
 links:
   p_max_pu: 1.0
@@ -758,7 +759,7 @@ solving:
     cbc-default: {} # Used in CI
     glpk-default: {} # Used in CI
 
-  mem: 30000 #memory in MB; 20 GB enough for 50+B+I+H2; 100 GB for 181+B+I+H2
+  mem: 70000 #memory in MB; 20 GB enough for 50+B+I+H2; 100 GB for 181+B+I+H2
 
 
 plotting:
