@@ -677,7 +677,7 @@ def country_generator_const(const_country, const_carrier, gen_limit, type):
     gen_p = n.model["Generator-p_nom"]
 
     #Apply constraint
-    name_str = "_".join(const_country + const_carrier + ["const"])
+    name_str = "_".join(const_country + const_carrier + ["custom_const"])
 
     gen_limit_brown = gen_limit - intalled_gen
 
@@ -716,7 +716,7 @@ def country_p2h_const(const_country, link_limit):
     link_limit_brown = link_limit - intalled_links
     
     #Add constraint
-    name_str = const_country + "_P2H_const"
+    name_str = const_country + "_P2H_custom_const"
     n.model.add_constraints(link_p.loc[links_p2h].sum()<=link_limit_brown, name=name_str)
 
 def country_p2x_const(const_country, link_limit, type):
@@ -738,7 +738,7 @@ def country_p2x_const(const_country, link_limit, type):
     link_p = n.model["Link-p_nom"]
     
     #Add constraint
-    name_str = const_country + "_P2X_const"
+    name_str = const_country + "_P2X_custom_const"
 
     if type == 'E':
         n.model.add_constraints(link_p.loc[links_p2x].sum()==link_limit, name=name_str)
@@ -930,8 +930,11 @@ if __name__ == "__main__":
 
         ### OBS ###
 
-        #Export linopy model
-        if n.config["enable"]["save_model"]:
+        #Export duals
+        
+        if n.config["enable"]["save_duals"]:
+
+            #Extract wildcards
             simpl = snakemake.wildcards.simpl
             clusters = snakemake.wildcards.clusters
             ll = snakemake.wildcards.ll
@@ -939,12 +942,29 @@ if __name__ == "__main__":
             sector_opts = snakemake.wildcards.sector_opts
             planning_horizons = snakemake.wildcards.planning_horizons
 
-            os.makedirs(f'results/{n.config["run"]["name"]}/models', exist_ok=True)
-            file_path = f'results/{n.config["run"]["name"]}/models/model_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.nc'
-            n.model.to_netcdf(file_path)
+            #Create directory
+            os.makedirs(f'results/{n.config["run"]["name"]}/duals', exist_ok=True)
+            
+            #Define name of nodes and co2 constraints
+            nodes = pd.Series([node[:5] for node in n.generators.index.to_list()]).unique()
+            nodes = pd.Series(nodes[0:-4]).to_list()
+            co2_constraints = [node + ' co2 atmosphere local co2 constraint' for node in nodes]
+
+            #Extract co2 constraint duals
+            file_path_co2_duals = f'results/{n.config["run"]["name"]}/duals/co2_duals_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.csv'
+            co2_constraint_duals = pd.Series([n.model.dual[node].values for node in co2_constraints], index=co2_constraints)
+            co2_constraint_duals = co2_constraint_duals.abs().astype(float)
+            co2_constraint_duals.to_csv(file_path_co2_duals)
+
+            #Extract custom constraint duals
+            file_path_custom_const_duals = f'results/{n.config["run"]["name"]}/duals/custom_const_duals_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.csv'
+            const_names = list(n.model.dual.keys())
+            custom_const_names = [name for name in const_names if 'custom_const' in name]
+            custom_const_duals = pd.Series([n.model.dual[node].values for node in custom_const_names], index=custom_const_names)
+            custom_const_duals = custom_const_duals.abs().astype(float)
+            custom_const_duals.to_csv(file_path_custom_const_duals)
 
         ### OBS ###
-
 
     logger.info("Maximum memory usage: {}".format(mem.mem_usage))
 

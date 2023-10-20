@@ -106,7 +106,7 @@ enable:
   build_natura_raster: false
   retrieve_natura_raster: true
   custom_busmap: true
-  save_model: false
+  save_duals: true ### OBS ###
 
 # CO2 budget as a fraction of 1990 emissions
 # this is over-ridden if CO2Lx is set in sector_opts
