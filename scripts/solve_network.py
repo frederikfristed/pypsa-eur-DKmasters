@@ -807,19 +807,29 @@ def extra_functionality(n, snapshots):
     df_co2 = pd.read_csv(file_path)
     df_co2.columns = ['co2 atmosphere', 'co2 budget']
 
+    #Sort df in DK nodes and non-DK nodes
+    dk_nodes =  [node for node in df_co2.loc[:,'co2 atmosphere'] if 'DK' in node]
+    dk_df_co2 = df_co2[df_co2['co2 atmosphere'].isin(dk_nodes)]
+    other_df_co2 = df_co2[~df_co2['co2 atmosphere'].isin(dk_nodes)]
+
     #Store nominal capacity in model object
     store_e = n.model["Store-e_nom"]
 
-    #Apply local CO2 constraints nodally
-    co2_budget = df_co2['co2 budget']
-    co2_budget.index = df_co2['co2 atmosphere']
+    #Apply local CO2 constraints nodally for non-DK countries
+    logger.info(f"Adding local CO2 constraint for non-DK nodes")
+    co2_budget = other_df_co2['co2 budget']
+    co2_budget.index = other_df_co2['co2 atmosphere']
 
-    logger.info(f"Adding local CO2 constraint for each node")
-
-    for atmosphere in df_co2.loc[:,'co2 atmosphere']:
+    for atmosphere in other_df_co2.loc[:,'co2 atmosphere']:
         co2_cap = co2_budget[atmosphere]
         name_str = atmosphere + " local co2 constraint"
         n.model.add_constraints(store_e[atmosphere] <= co2_cap, name=name_str)
+
+    #Apply local CO2 constraint by country aggregate in DK
+    logger.info(f"Adding local CO2 constraint for DK nodes")
+    dk_co2_budget = dk_df_co2['co2 budget'].sum()
+    name_str = "DK local co2 constraint"
+    n.model.add_constraints(store_e.loc[dk_nodes].sum()<=dk_co2_budget, name=name_str)
 
     ### END OF ADDED CODE ###
 
@@ -945,14 +955,17 @@ if __name__ == "__main__":
             #Create directory
             os.makedirs(f'results/{n.config["run"]["name"]}/duals', exist_ok=True)
             
-            #Define name of nodes and co2 constraints
+            #Define name of nodes and co2 constraints for non DK nodes
             nodes = pd.Series([node[:5] for node in n.generators.index.to_list()]).unique()
             nodes = pd.Series(nodes[0:-4]).to_list()
-            co2_constraints = [node + ' co2 atmosphere local co2 constraint' for node in nodes]
+            other_nodes = [node for node in nodes if 'DK' not in node]
+            co2_constraints = [node + ' co2 atmosphere local co2 constraint' for node in other_nodes]
 
             #Extract co2 constraint duals
             file_path_co2_duals = f'results/{n.config["run"]["name"]}/duals/co2_duals_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.csv'
             co2_constraint_duals = pd.Series([n.model.dual[node].values for node in co2_constraints], index=co2_constraints)
+            dk_co2_constraint_duals = pd.Series( n.model.dual["DK local co2 constraint"].values, index=["DK local co2 constraint"])
+            co2_constraint_duals = co2_constraint_duals.append(dk_co2_constraint_duals)
             co2_constraint_duals = co2_constraint_duals.abs().astype(float)
             co2_constraint_duals.to_csv(file_path_co2_duals)
 
