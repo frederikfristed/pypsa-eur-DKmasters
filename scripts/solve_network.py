@@ -810,17 +810,21 @@ def extra_functionality(n, snapshots):
     #Sort df in DK nodes and non-DK nodes
     dk_nodes =  [node for node in df_co2.loc[:,'co2 atmosphere'] if 'DK' in node]
     dk_df_co2 = df_co2[df_co2['co2 atmosphere'].isin(dk_nodes)]
-    other_df_co2 = df_co2[~df_co2['co2 atmosphere'].isin(dk_nodes)]
+    #other_df_co2 = df_co2[~df_co2['co2 atmosphere'].isin(dk_nodes)]
+
+    #Sanity limits in DK to ensure bounded problem
+    dk_nodal_cap = dk_df_co2['co2 budget'].sum() * 0.5  # Node must maximally emit 50% of DK country-aggregate emissions
+    df_co2.loc[df_co2['co2 atmosphere'].isin(dk_nodes), 'co2 budget'] = dk_nodal_cap
 
     #Store nominal capacity in model object
     store_e = n.model["Store-e_nom"]
 
     #Apply local CO2 constraints nodally for non-DK countries
     logger.info(f"Adding local CO2 constraint for non-DK nodes")
-    co2_budget = other_df_co2['co2 budget']
-    co2_budget.index = other_df_co2['co2 atmosphere']
+    co2_budget = df_co2['co2 budget']
+    co2_budget.index = df_co2['co2 atmosphere']
 
-    for atmosphere in other_df_co2.loc[:,'co2 atmosphere']:
+    for atmosphere in df_co2.loc[:,'co2 atmosphere']:
         co2_cap = co2_budget[atmosphere]
         name_str = atmosphere + " local co2 constraint"
         n.model.add_constraints(store_e[atmosphere] <= co2_cap, name=name_str)
@@ -829,7 +833,7 @@ def extra_functionality(n, snapshots):
     logger.info(f"Adding local CO2 constraint for DK nodes")
     dk_co2_budget = dk_df_co2['co2 budget'].sum()
     name_str = "DK local co2 constraint"
-    n.model.add_constraints(store_e.loc[dk_nodes].sum()<=dk_co2_budget, name=name_str)
+    n.model.add_constraints(store_e.loc[dk_nodes].sum() <= dk_co2_budget, name=name_str)
 
     ### END OF ADDED CODE ###
 
@@ -958,8 +962,8 @@ if __name__ == "__main__":
             #Define name of nodes and co2 constraints for non DK nodes
             nodes = pd.Series([node[:5] for node in n.generators.index.to_list()]).unique()
             nodes = pd.Series(nodes[0:-4]).to_list()
-            other_nodes = [node for node in nodes if 'DK' not in node]
-            co2_constraints = [node + ' co2 atmosphere local co2 constraint' for node in other_nodes]
+            #other_nodes = [node for node in nodes if 'DK' not in node]
+            co2_constraints = [node + ' co2 atmosphere local co2 constraint' for node in nodes]
 
             #Extract co2 constraint duals
             file_path_co2_duals = f'results/{n.config["run"]["name"]}/duals/co2_duals_s{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.csv'
