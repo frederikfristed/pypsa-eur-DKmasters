@@ -678,17 +678,30 @@ def add_co2_tracking(n, options):
 
 def export_co2_budget():
 
-    # Initialize an empty dictionary to store e_nom values
-    e_nom_dict = {}
+    #Wildcards
+    simpl = snakemake.wildcards.simpl
+    clusters = snakemake.wildcards.clusters
+    ll = snakemake.wildcards.ll
+    opts = snakemake.wildcards.opts
+    sector_opts = snakemake.wildcards.sector_opts
+    planning_horizons = snakemake.wildcards.planning_horizons
 
-    # read CSV file containing disparate industries/services CO2 emissions (in megatonnes)
+    #Sectors included in opts
+    sectors = emission_sectors_from_opts(sector_opts)
+    countries = snakemake.config["countries"]
+
+    #Read CSV file containing disparate industries/services CO2 emissions (in megatonnes)
     co2_emissions = pd.read_csv(snakemake.input.co2_totals_name, index_col = 0)
+    co2_emissions = co2_emissions.loc[countries, sectors]
 
     # sum disparate industries/services CO2 emissions per country (in tonnes)
     co2_emissions_per_country = co2_emissions.sum(axis = 1) * 1e6
 
     # get CO2 budget per country (in percentage)
     co2_budget_per_country = snakemake.config["co2_budget_per_country"]
+
+    # Initialize an empty dictionary to store e_nom values
+    e_nom_dict = {}
 
     # loop through local/nodal CO2 atmospheres
     for atmosphere in spatial.co2.atmospheres:
@@ -702,12 +715,6 @@ def export_co2_budget():
 
     # Export to a CSV file at the specified path
     e_nom_df = pd.DataFrame.from_dict(e_nom_dict, orient='index', columns=['e_nom'])
-    simpl = snakemake.wildcards.simpl
-    clusters = snakemake.wildcards.clusters
-    ll = snakemake.wildcards.ll
-    opts = snakemake.wildcards.opts
-    sector_opts = snakemake.wildcards.sector_opts
-    planning_horizons = snakemake.wildcards.planning_horizons
     file_path = f'resources/co2_budget_{simpl}_{clusters}_l{ll}_{opts}_{sector_opts}_{planning_horizons}.csv'
     e_nom_df.to_csv(file_path)
 
