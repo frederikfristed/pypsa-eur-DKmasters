@@ -1834,6 +1834,133 @@ def add_land_transport(n, costs):
                   p_set = -co2
                  )
 
+    if snakemake.config["land_transport_const"]["ev_share_const"]:
+        const_country = snakemake.config["land_transport_const"]["ev_const_country"]
+        land_transport_electric_share = snakemake.config["land_transport_const"]["land_transport_electric_share"]
+        #const_country: Country ISO code, e.g. 'DK'
+        #land_transport_electric_share: Share of EV land transport in constrained country
+
+        global_land_transport_electric_share = snakemake.config["sector"]["land_transport_electric_share"][2030]    #NB 2030 is hardcoded
+        k_fac = land_transport_electric_share/global_land_transport_electric_share
+
+        #BEV charger constraint
+            #Extract BEV charger links for DK nodes
+        link_list = n.links.bus0.to_list()
+        mask_bus_BEV_charger = pd.Series([bus.startswith(const_country) for bus in link_list])
+        mask_carrier_BEV_charger = n.links.carrier=='BEV charger'
+        mask_carrier_BEV_charger.index = mask_bus_BEV_charger.index
+        mask_DK_BEV_charger = mask_bus_BEV_charger & mask_carrier_BEV_charger
+        mask_DK_BEV_charger.index = n.links.index
+
+            #Scale link capacity
+        n.links.loc[mask_DK_BEV_charger,'p_nom'] *= k_fac
+
+        #BEV battery capacity constraint
+            #Extract BEV battery stores for DK nodes
+        store_list = n.stores.bus.to_list()
+        mask_bus_BEV_battery = pd.Series([bus.startswith(const_country) for bus in store_list])
+        mask_carrier_BEV_battery = n.stores.carrier=='battery storage'
+        mask_carrier_BEV_battery.index = mask_bus_BEV_battery.index
+        mask_DK_BEV_battery = mask_bus_BEV_battery & mask_carrier_BEV_battery
+        mask_DK_BEV_battery.index = n.stores.index
+
+            #Scale store capacity
+        n.stores.loc[mask_DK_BEV_battery,'e_nom'] *= k_fac
+
+        #ICE constraint
+            #Transport load
+        clusters = snakemake.wildcards.clusters
+        simpl = snakemake.wildcards.simpl
+        simpl_part = f"s{simpl}_" if simpl else "s_"
+        file_path = f"resources/transport_demand_{simpl_part}{clusters}.csv"
+        transport = pd.read_csv(file_path, index_col=0, parse_dates=True)
+
+            #Ice scale factor
+        global_land_transport_ICE_share = 1 - global_land_transport_electric_share
+        land_transport_ICE_share = 1 - land_transport_electric_share
+        ICE_fac = land_transport_ICE_share/global_land_transport_ICE_share
+
+        if snakemake.config["co2_local_atmosphere"]:
+
+            ###### Extract oil emission loads specific to target country nodes
+            load_list = n.loads.index.to_list()
+            mask_loads_country = pd.Series([load.startswith(const_country) for load in load_list])
+            mask_loads_country.index = n.loads.index
+            mask_loads_carrier = n.loads.carrier=='land transport oil emissions'
+            mask_loads_carrier.index = n.loads.index
+            mask_loads = mask_loads_country & mask_loads_carrier
+            
+            #Scale oil emission capacity
+            n.loads.loc[mask_loads,'p_set'] *= ICE_fac
+
+            ###### Extract oil loads specific to target country nodes
+            load_list = n.loads_t.p_set.columns.to_list()
+            mask_loads_country = pd.Series([load.startswith('DK') for load in load_list])
+            mask_loads_country.index = n.loads_t.p_set.columns
+            mask_loads_carrier =  pd.Series(n.loads_t.p_set.columns.str.contains('land transport oil'))
+            mask_loads_carrier.index = n.loads_t.p_set.columns
+            mask_loads = mask_loads_country & mask_loads_carrier
+
+            #Scale oil & oil emission capacity
+            n.loads_t.p_set.loc[:,mask_loads] *= ICE_fac
+
+            ###### Extract EV loads specific to target country nodes
+            load_list = n.loads_t.p_set.columns.to_list()
+            mask_loads_country = pd.Series([load.startswith('DK') for load in load_list])
+            mask_loads_country.index = n.loads_t.p_set.columns
+            mask_loads_carrier =  pd.Series(n.loads_t.p_set.columns.str.contains('land transport EV'))
+            mask_loads_carrier.index = n.loads_t.p_set.columns
+            mask_loads = mask_loads_country & mask_loads_carrier
+
+            #Scale oil & oil emission capacity
+            n.loads_t.p_set.loc[:,mask_loads] *= k_fac
+
+
+        else:
+
+            #Extract nodes and country specific nodes
+            bus_list = n.buses.index.to_list()
+            mask_nodes = n.buses.country.apply(lambda x: x!='')
+            mask_country = pd.Series([bus.startswith(const_country) for bus in bus_list])
+            mask_country.index = mask_nodes.index
+            mask_nodes_country = mask_nodes & mask_country
+            nodes = n.buses.loc[mask_nodes].index
+            nodes_country = n.buses.loc[mask_nodes_country].index
+            
+            #Extract transport loads in network and in target country
+            transport_country = transport[nodes_country].sum().sum()
+            transport_global = transport[nodes].sum().sum()
+            country_share = transport_country/transport_global
+            
+            #Scale oil emission capacity
+            CO2_global = n.loads.loc['land transport oil emissions'].p_set
+            n.loads.loc['land transport oil emissions','p_set'] = CO2_global - CO2_global*country_share + CO2_global*country_share*ICE_fac
+
+            #### OBS have not been tested
+            
+            ###### Extract oil loads specific to target country nodes
+            load_list = n.loads_t.p_set.columns.to_list()
+            mask_loads_country = pd.Series([load.startswith('DK') for load in load_list])
+            mask_loads_country.index = n.loads_t.p_set.columns
+            mask_loads_carrier =  pd.Series(n.loads_t.p_set.columns.str.contains('land transport oil'))
+            mask_loads_carrier.index = n.loads_t.p_set.columns
+            mask_loads = mask_loads_country & mask_loads_carrier
+
+            #Scale oil & oil emission capacity
+            n.loads_t.p_set.loc[:,mask_loads] *= ICE_fac
+
+            ###### Extract EV loads specific to target country nodes
+            load_list = n.loads_t.p_set.columns.to_list()
+            mask_loads_country = pd.Series([load.startswith('DK') for load in load_list])
+            mask_loads_country.index = n.loads_t.p_set.columns
+            mask_loads_carrier =  pd.Series(n.loads_t.p_set.columns.str.contains('land transport EV'))
+            mask_loads_carrier.index = n.loads_t.p_set.columns
+            mask_loads = mask_loads_country & mask_loads_carrier
+
+            #Scale oil & oil emission capacity
+            n.loads_t.p_set.loc[:,mask_loads] *= k_fac
+
+
 
 def build_heat_demand(n):
     # copy forward the daily average heat demand into each hour, so it can be multiplied by the intraday profile

@@ -28,7 +28,7 @@ scenario:
   opts: # only relevant for PyPSA-Eur
   - ''
   sector_opts: # this is where the main scenario settings are
-  - Co2L0.45-168H-T-H-B-I-A-solar+p3-dist1
+  - Co2L0.45-3H-T-H-B-I-solar+p3-dist1
   # to really understand the options here, look in scripts/prepare_sector_network.py
   # Co2Lx specifies the CO2 target in x% of the 1990 values; default will give default (5%);
   # Co2L0p25 will give 25% CO2 emissions; Co2Lm0p05 will give 5% negative emissions
@@ -133,7 +133,7 @@ co2_budget_per_country:
   'CH': 0.50
   'CZ': 0.52
   'DE': 0.35
-  'DK': 0.22
+  'DK': 0.21
   'EE': 0.30
   'ES': 0.68
   'FI': 0.40
@@ -471,7 +471,7 @@ sector:
     2040: 0.3
     2050: 0
   transport_fuel_cell_efficiency: 0.5
-  transport_internal_combustion_efficiency: 0.3
+  transport_internal_combustion_efficiency: 0.265 #OBS Changed efficiency from 0.3 to 0.265 (factor of 0.87) to reach KF emissions on ICE land transport
   agriculture_machinery_electric_share: 0
   agriculture_machinery_oil_share: 1
   agriculture_machinery_fuel_efficiency: 0.7 # fuel oil per use
