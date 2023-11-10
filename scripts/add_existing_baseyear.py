@@ -725,6 +725,26 @@ def add_heating_capacities_installed_before_baseyear(
                 ],
             )
 
+### OBS ###
+
+def remove_myopic_RE_cap():
+    # Load generators
+    gen = n.generators
+
+    # Carriers to remove
+    mask_carrier = gen.index.str.contains('onwind|solar|offwind-ac|offwind-dc', case=False, regex=True)
+
+    # Remove only non-extendable
+    mask_ext = gen['p_nom_extendable'] == False
+
+    # Generators to be removed
+    gen_RE_myopic = gen[mask_carrier & mask_ext].index
+
+    # Remove selected generators
+    n.generators.drop(gen_RE_myopic,inplace = True)
+
+### OBS ###
+
 
 # %%
 if __name__ == "__main__":
@@ -798,6 +818,11 @@ if __name__ == "__main__":
     if options.get("cluster_heat_buses", False):
         cluster_heat_buses(n)
 
+    ### OBS ###
+    remove_myopic_RE_cap()
+    ### OBS ###
+
     n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
 
     n.export_to_netcdf(snakemake.output[0])
+

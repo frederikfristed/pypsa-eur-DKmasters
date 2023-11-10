@@ -1629,22 +1629,22 @@ def add_storage_and_grids(n, costs):
             lifetime=costs.at["SMR", "lifetime"],
         )
         """
-        if snakemake.config["co2_local_atmosphere"]:
-            logger.info("Configure model with %d 'SMR' links connected to the %d local/nodal 'CO2 atmosphere' buses" % (len(nodes), len(spatial.co2.atmospheres)))
-        else:
-            logger.info("Configure model with a 'SMR' link connected to the global 'CO2 atmosphere' bus")
-        n.madd("Link",
-               nodes + " SMR",
-               bus0 = spatial.gas.nodes,
-               bus1 = nodes + " H2",
-               bus2 = spatial.co2.atmospheres,
-               p_nom_extendable = True,
-               carrier = "SMR",
-               efficiency = costs.at["SMR", "efficiency"],
-               efficiency2 = costs.at["gas", "CO2 intensity"],
-               capital_cost = costs.at["SMR", "fixed"],
-               lifetime = costs.at["SMR", "lifetime"]
-              )
+        # if snakemake.config["co2_local_atmosphere"]:
+        #     logger.info("Configure model with %d 'SMR' links connected to the %d local/nodal 'CO2 atmosphere' buses" % (len(nodes), len(spatial.co2.atmospheres)))
+        # else:
+        #     logger.info("Configure model with a 'SMR' link connected to the global 'CO2 atmosphere' bus")
+        # n.madd("Link",
+        #        nodes + " SMR",
+        #        bus0 = spatial.gas.nodes,
+        #        bus1 = nodes + " H2",
+        #        bus2 = spatial.co2.atmospheres,
+        #        p_nom_extendable = True,
+        #        carrier = "SMR",
+        #        efficiency = costs.at["SMR", "efficiency"],
+        #        efficiency2 = costs.at["gas", "CO2 intensity"],
+        #        capital_cost = costs.at["SMR", "fixed"],
+        #        lifetime = costs.at["SMR", "lifetime"]
+        #       )
 
 
 def add_land_transport(n, costs):
@@ -2660,6 +2660,18 @@ def add_biomass(n, costs):
             carrier="solid biomass transport",
         )
 
+        ### OBS ###
+
+        "Unlimited domestic biomass transport in DK"
+        dk_mask = n.links.bus0.str.contains('DK') & n.links.bus1.str.contains('DK')
+        biomass_transport_mask = n.links.index.str.contains('biomass transport')
+        n.links.loc[(dk_mask & biomass_transport_mask), 'p_nom_extendable'] = True
+
+        ### OBS ###
+
+
+
+
     # AC buses with district heating
     urban_central = n.buses.index[n.buses.carrier == "urban central heat"]
     if not urban_central.empty and options["chp"]:
@@ -2746,7 +2758,7 @@ def add_biomass(n, costs):
             "residential rural",
             "services rural",
             "residential urban decentral",
-            "services urban decentral",
+            "services urban decentral"
         ]:
             n.madd(
                 "Link",
@@ -2757,7 +2769,27 @@ def add_biomass(n, costs):
                 carrier=name + " biomass boiler",
                 efficiency=costs.at["biomass boiler", "efficiency"],
                 capital_cost=costs.at["biomass boiler", "efficiency"]
-                * costs.at["biomass boiler", "fixed"],
+                * costs.at["biomass boiler", "fixed"] * 0.71, # Corrected from new prices. See technolgy data sheet or in report.
+                lifetime=costs.at["biomass boiler", "lifetime"],
+            )
+    
+    # OBS Added biomass boiler central
+    if options["biomass_boiler"]:
+        # TODO: Add surcharge for pellets
+        nodes_heat = create_nodes_for_heat_sector()[0]
+        for name in [
+            "urban central"
+        ]:
+            n.madd(
+                "Link",
+                nodes_heat[name] + f" {name} biomass boiler",
+                p_nom_extendable=True,
+                bus0=spatial.biomass.df.loc[nodes_heat[name], "nodes"].values,
+                bus1=nodes_heat[name] + f" {name} heat",
+                carrier=name + " biomass boiler",
+                efficiency=costs.at["biomass boiler", "efficiency"],
+                capital_cost=costs.at["biomass boiler", "efficiency"]
+                * costs.at["biomass boiler", "fixed"] * 0.32, # Corrected from new prices. See technolgy data sheet or in report.
                 lifetime=costs.at["biomass boiler", "lifetime"],
             )
 

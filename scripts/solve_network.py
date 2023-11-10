@@ -552,24 +552,6 @@ def add_pipe_retrofit_constraint(n):
 
     n.model.add_constraints(lhs == rhs, name="Link-pipe_retrofit")
 
-### ADDED NEW FUNCTION HERE ###
-
-def remove_myopic_RE_cap():
-    # Load generators
-    gen = n.generators
-
-    # Carriers to remove
-    mask_carrier = gen.index.str.contains('onwind|solar|offwind-ac|offwind-dc', case=False, regex=True)
-
-    # Remove only non-extendable
-    mask_ext = gen['p_nom_extendable'] == False
-
-    # Generators to be removed
-    gen_RE_myopic = gen[mask_carrier & mask_ext].index
-
-    # Remove selected generators
-    n.generators.drop(gen_RE_myopic,inplace = True)
-          
 def country_generator_const(const_country, const_carrier, gen_limit, type):
 
     #const_country: Country ISO code of constrained contries in square brackets, e.g. ['DK']
@@ -611,8 +593,9 @@ def country_generator_const(const_country, const_carrier, gen_limit, type):
     elif type == 'GE':
         n.model.add_constraints(gen_p.loc[const_gen].sum()>=gen_limit_brown,name=name_str)
 
-def country_p2h_const(const_country, link_limit):
+def country_p2h_const(const_country, technology, link_limit):
     #const_country: Country ISO code/codes as string, e.g. 'DK'
+    #technology: 'heat pump' or 'resistive heater'
     #link_limit: Country-wide P2H limit [MW], e.g. 5000
 
     const_country = 'DK'
@@ -622,14 +605,14 @@ def country_p2h_const(const_country, link_limit):
     mask_ext = links['p_nom_extendable'] == True
     links_ext = links[mask_ext]
     
-    mask_p2h = links_ext.index.str.contains('heat pump|resistive heater', case=False, regex=True)
+    mask_p2h = links_ext.index.str.contains(technology, case=False, regex=True)
     mask_country = links_ext['bus0'].str.contains(const_country, case=False, regex=True)
     mask_comb = mask_p2h & mask_country
     links_p2h = links_ext.loc[mask_comb].index.to_list()
     
     # Brownfield installed generators
     links_brown = links[~mask_ext]
-    mask_p2h = links_brown.index.str.contains('heat pump|resistive heater', case=False, regex=True)
+    mask_p2h = links_brown.index.str.contains(technology, case=False, regex=True)
     mask_country = links_brown['bus0'].str.contains(const_country, case=False, regex=True)
     intalled_links = links_brown.loc[mask_country & mask_p2h,'p_nom'].sum()
     
@@ -639,7 +622,7 @@ def country_p2h_const(const_country, link_limit):
     link_limit_brown = link_limit - intalled_links
     
     #Add constraint
-    name_str = const_country + "_P2H_custom_const"
+    name_str = const_country + f"_P2H_custom_const - {technology}"
     n.model.add_constraints(link_p.loc[links_p2h].sum()<=link_limit_brown, name=name_str)
 
 def country_p2x_const(const_country, link_limit, type):
@@ -670,6 +653,25 @@ def country_p2x_const(const_country, link_limit, type):
     elif type == 'GE':
         n.model.add_constraints(link_p.loc[links_p2x].sum()>=link_limit, name=name_str)
 
+def biomass_brownfield(const_country, biomass_brownfield):
+    #const_country: Country ISO code, e.g. 'DK'
+    #biomass_brownfield: Minimum thermal capacity of biomass CHP, e.g. 5249
+        #we assume all brownfield biomass thermal capacity is biomass CHP (~95%)
+    
+    links = n.links
+    dk_mask = links.index.str.contains(const_country)
+
+    #Biomass CHP
+    chp_heat_eff = 0.82
+    chp_mask = (links.index.str.contains('biomass')) & (links.index.str.contains('CHP'))
+    chp_links = links.loc[chp_mask & dk_mask].index.to_list()
+
+    #Nominal capacity in model object
+    link_p = n.model["Link-p_nom"]
+
+    #Add constraint
+    name_str = const_country + f"_biomass_brownfield_custom_const"
+    n.model.add_constraints((link_p.loc[chp_links].sum())*chp_heat_eff >= biomass_brownfield, name=name_str)
 
 ### END OF ADDED NEW FUNCTION ###
 
@@ -702,7 +704,6 @@ def extra_functionality(n, snapshots):
     ### ADDED NEW CODE HERE ###
 
 #Add scenario constraints
-    remove_myopic_RE_cap() # It is important that this comes before country_generator_const if active!
 
     country_generator_const(['DK'], ['onwind'], 6075, 'LE')
 
@@ -710,7 +711,11 @@ def extra_functionality(n, snapshots):
 
     country_generator_const(['DK'], ['solar','solar rooftop'], 13011, 'LE')
 
-    # country_p2h_const('DK', 2775)
+    biomass_brownfield('DK', 5249)
+
+    # country_p2h_const('DK','resistive heater', 1754) #1747 MW_th
+
+    # country_p2h_const('DK','heat pump', 646) # 2412 MW_th
 
     # country_p2x_const('DK', 4000, 'E')
 

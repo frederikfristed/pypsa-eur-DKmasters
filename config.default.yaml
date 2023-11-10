@@ -108,6 +108,12 @@ enable:
   custom_busmap: true
   save_duals: true ### OBS ###
 
+land_transport_const:
+  ev_share_const: True
+  ev_const_country: 'DK'
+  land_transport_electric_share: 0.105
+
+
 # CO2 budget as a fraction of 1990 emissions
 # this is over-ridden if CO2Lx is set in sector_opts
 # this is also over-ridden if cb is set in sector_opts
@@ -1027,3 +1033,4 @@ plotting:
     HVDC links: "#8a1caf"
     DC-DC: "#8a1caf"
     DC link: "#8a1caf"
+     
