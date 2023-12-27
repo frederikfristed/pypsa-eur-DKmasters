@@ -2669,7 +2669,24 @@ def add_biomass(n, costs):
 
         ### OBS ###
 
+        ### OBS ###
 
+        "Scale transmission capacity in DK"
+
+        if snakemake.config["dk_transmission_expansion"]["trans_exp_const"]:
+            exp_coeff = snakemake.config["dk_transmission_expansion"][trans_exp_coeff]
+
+            #Scale links
+            mask_dk = n.links.bus0.str.contains('DK') & n.links.bus1.str.contains('DK')
+            mask_link = n.links.carrier.str.contains('DC')
+            n.links.loc[(mask_dk & mask_link),'p_nom'] *= trans_exp_coeff
+
+            #Scale lines
+            mask_dk = n.lines.bus0.str.contains('DK') & n.lines.bus1.str.contains('DK')
+            mask_line = n.lines.carrier.str.contains('AC')
+            n.lines.loc[(mask_dk & mask_line),'s_nom'] *= trans_exp_coeff
+
+        ### OBS ###
 
 
     # AC buses with district heating
